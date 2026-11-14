@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -170,7 +171,7 @@ h3{margin:16px 0 2px;font:700 15px Figtree,sans-serif}
 .bar i{display:block;height:100%;background:var(--savia);border-radius:99px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 4px}
 .stats div{display:flex;flex-direction:column}
-.stats b{font:800 24px "Bricolage Grotesque",sans-serif;letter-spacing:-.02em}
+.stats b{font:800 24px "Bricolage Grotesque","Trebuchet MS",sans-serif;letter-spacing:-.02em}
 .stats span{font-size:12.5px;color:var(--muted)}
 .mini{height:6px;margin-top:5px}
 .av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:#fff;font:800 17px "Bricolage Grotesque",sans-serif}
@@ -226,6 +227,20 @@ h3{margin:16px 0 2px;font:700 15px Figtree,sans-serif}
 .friend-coming p{margin:0 auto;color:#71847a;font-size:13px;line-height:1.5;max-width:310px}
 .friend-features{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:17px;padding-top:14px;border-top:1px solid rgba(38,130,77,.12)}
 .friend-features div{display:flex;flex-direction:column;align-items:center;gap:5px;color:#6c8274;font-size:10px}.friend-features span{font-size:18px}.friend-features b{font-weight:700}
+
+/* Cuenta, sincronización y comunidad real */
+.cloud-card{background:#f6faf3;border:1px solid rgba(38,130,77,.13);border-radius:18px;padding:14px;margin:12px 0}
+.cloud-card input[type=email],.cloud-card input[type=password],.cloud-card input[type=text]{width:100%;height:42px;border:1.5px solid var(--linea);border-radius:12px;padding:0 12px;margin:5px 0 9px;font:600 14px Figtree,sans-serif;color:var(--tinta);background:#fff}
+.cloud-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.cloud-actions .btn{min-height:40px;height:auto;padding:9px 13px;font-size:13px}
+.cloud-status{font-size:11px;color:#66806d;font-weight:700}
+.friend-cloud-row{display:grid;grid-template-columns:40px 1fr auto;gap:10px;align-items:center;padding:12px 0;border-top:1px solid var(--linea)}
+.friend-cloud-row:first-child{border-top:0}
+.friend-cloud-avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#dcefd5;color:#36724a;font-weight:800}
+.cloud-check{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--muted);margin:12px 0}
+.cloud-check input{width:18px;height:18px;accent-color:var(--savia);flex:none}
+.invite-box{overflow-wrap:anywhere;background:#fff;border:1px dashed rgba(38,130,77,.35);border-radius:12px;padding:10px;font-size:12px;color:var(--muted);margin:9px 0}
+
 </style>
 </head>
 <body class="sky-day">
@@ -244,6 +259,7 @@ h3{margin:16px 0 2px;font:700 15px Figtree,sans-serif}
         <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20C4 10 10 4 21 3c0 10-5 16-14 16z" fill="#26824d"/><path d="M4 20C8 14 11 11 15 8" stroke="#b9e26b" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
         Brotar
       </div>
+
       <div class="top-r">
         <span id="offlineBadge" class="offline-badge" aria-live="polite">Sin conexión</span>
         <button class="install-chip" id="installBtn" type="button" aria-label="Instalar Brotar">＋ Instalar</button>
@@ -263,10 +279,15 @@ h3{margin:16px 0 2px;font:700 15px Figtree,sans-serif}
 <div id="modal" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
 <script>
 (()=>{
 'use strict';
 const $=s=>document.querySelector(s);
+const cloudConfig=window.BROTAR_SUPABASE_CONFIG||{};
+const supabaseClient=(window.supabase&&cloudConfig.url&&cloudConfig.key&&!String(cloudConfig.url).includes('TU-PROYECTO')&&!String(cloudConfig.key).includes('TU-CLAVE'))?window.supabase.createClient(cloudConfig.url,cloudConfig.key):null;
+let cloudUser=null,cloudSyncTimer=null,cloudSaving=false,cloudApplying=false,pendingInviteToken=new URLSearchParams(location.search).get('invite')||null,cloudFriends=[];
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 const HAS3D=!!window.THREE;
@@ -277,6 +298,7 @@ const store={
   get(k){try{return localStorage.getItem(k)}catch(e){return mem[k]??null}},
   set(k,v){try{localStorage.setItem(k,v)}catch(e){mem[k]=v}}
 };
+pendingInviteToken=pendingInviteToken||store.get('brotar_pending_invite')||null;if(pendingInviteToken)store.set('brotar_pending_invite',pendingInviteToken);
 
 /* ---------- datos del juego ---------- */
 const SPECIES={
@@ -365,130 +387,10 @@ const DEMO_FRIENDS=[
 const genCode=()=>'BRO-'+Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
 const defaultState=()=>({points:0,totalMin:0,days:{},dur:25,brk:5,demo:false,active:'roble',
   trees:{roble:{leaves:0,partial:0}},owned:{},equipped:{},sky:'day',subjects:[],selectedSubject:'',studyLog:[],notes:'',tasks:[],cards:[],music:false,code:genCode(),sent:0,cheered:{},
-  friends:DEMO_FRIENDS.map(f=>({...f}))});
+  friends:[]});
 let S=(()=>{try{const j=JSON.parse(store.get('brotar_v1')||'null');if(j)return Object.assign(defaultState(),j)}catch(e){}return defaultState()})();
 S.subjects=Array.isArray(S.subjects)?S.subjects:[];S.studyLog=Array.isArray(S.studyLog)?S.studyLog:[];S.tasks=Array.isArray(S.tasks)?S.tasks:[];S.cards=Array.isArray(S.cards)?S.cards:[];
-if(!S.trees.roble)S.trees.roble={leaves:0,partial:0};
-Object.keys(S.trees).forEach(id=>{if(!SPECIES[id])delete S.trees[id]});if(!SPECIES[S.active]||!S.trees[S.active])S.active='roble';
-if(!S.trees[S.active])S.active='roble';
-// Compatibilidad: la tienda usa IDs en español y el motor visual usa claves internas.
-S.sky=({atardecer:'sunset',noche:'night',sunset:'sunset',night:'night',space:'space',day:'day'})[S.sky]||'day';
-const nowMs=Date.now();
-S.friends.forEach(f=>{f.since=nowMs-(f.off||0)*60000});
-const save=()=>{S.activeSession=session||null;store.set('brotar_v1',JSON.stringify(S))};
 
-const dayKey=(d=new Date())=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-const monthKey=(d=new Date())=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-const monthMinutes=()=>S.studyLog.filter(x=>x.month===monthKey()).reduce((a,x)=>a+x.minutes,0);
-const subjectMonth=()=>{const o={};S.studyLog.filter(x=>x.month===monthKey()&&x.subject).forEach(x=>o[x.subject]=(o[x.subject]||0)+x.minutes);return o;};
-const esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const todayMin=()=>S.days[dayKey()]||0;
-function weekMinutes(){let t=0;for(let i=0;i<7;i++){const d=new Date();d.setDate(d.getDate()-i);t+=S.days[dayKey(d)]||0}return t}
-const fmtMin=m=>m<60?m+' min':Math.floor(m/60)+' h'+(m%60?' '+(m%60)+' min':'');
-const fmtClock=ms=>{const s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
-const leavesTxt=n=>n+(n===1?' hoja':' hojas');
-const totalLeaves=()=>Object.values(S.trees).reduce((a,t)=>a+t.leaves,0);
-const isOwned=it=>it.type==='tree'?!!S.trees[it.id]:!!S.owned[it.id];
-
-/* ---------- sesión de foco ---------- */
-let session=S.activeSession||null;
-const elapsed=s=>s.base+(s.resumedAt?(Date.now()-s.resumedAt)*s.speed:0);
-if(session&&session.resumedAt){session.base=elapsed(session);session.resumedAt=null;}
-if(session&&session.mode==='focus'&&!Number.isFinite(session.awarded))session.awarded=0;
-function leafProg(){
-  const tr=S.trees[S.active];let f=0;
-  if(session&&session.mode==='focus'&&session.resumedAt)f=clamp(elapsed(session)/60000-session.awarded,0,.999);
-  return Math.min(1,(tr.partial+f)/LEAF_MIN);
-}
-
-/* ---------- toasts, sonido, pantalla activa ---------- */
-function toast(msg){const d=document.createElement('div');d.className='toast';d.textContent=msg;$('#toasts').appendChild(d);setTimeout(()=>d.remove(),2800)}
-let AC,ambientNodes=[];
-function stopAmbient(){ambientNodes.forEach(n=>{try{n.stop()}catch(e){}});ambientNodes=[];S.music=false;save()}
-function startAmbient(){initAudio();if(!AC)return;stopAmbient();S.music=true;save();[110,164.81,220].forEach((f,i)=>{const o=AC.createOscillator(),g=AC.createGain(),lp=AC.createBiquadFilter();o.type='sine';o.frequency.value=f;lp.type='lowpass';lp.frequency.value=420;g.gain.value=[.012,.008,.006][i];o.connect(lp);lp.connect(g);g.connect(AC.destination);o.start();ambientNodes.push(o)})}
-
-function initAudio(){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();AC.resume&&AC.resume()}catch(e){}}
-function chime(){try{if(!AC)return;const t0=AC.currentTime;[[660,0],[880,.12],[1320,.26]].forEach(([f,d])=>{const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(.0001,t0+d);g.gain.exponentialRampToValueAtTime(.12,t0+d+.02);g.gain.exponentialRampToValueAtTime(.0001,t0+d+.5);o.connect(g);g.connect(AC.destination);o.start(t0+d);o.stop(t0+d+.55)})}catch(e){}}
-let wl=null;
-async function lock(){try{if('wakeLock' in navigator)wl=await navigator.wakeLock.request('screen')}catch(e){}}
-function unlock(){try{wl&&wl.release();wl=null}catch(e){}}
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&session&&session.resumedAt)lock();save();tick()});
-window.addEventListener('pagehide',()=>save());window.addEventListener('beforeunload',()=>save());
-
-/* ---------- escena 3D ---------- */
-let renderer,scene,camera,world,hemi,sun,T=null,fireflies,butterflies=[],butterGroup,rain,stars,props={},lanternLight,petActors=[];
-const conf=[];let yaw=0,vel=0,drag=false,lastX=0;
-const matCache={};
-const leafMat=c=>matCache[c]||(matCache[c]=new THREE.MeshStandardMaterial({color:c,flatShading:true,roughness:.85}));
-function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
-const hash=id=>[...id].reduce((a,c)=>(a*31+c.charCodeAt(0))|0,7);
-function makeSlots(shape,n,seed){
-  const r=rng(seed),out=[];
-  for(let i=0;i<n;i++){
-    let x,y,z;
-    if(shape==='cone'){
-      const t=Math.pow(r(),.85),a=r()*6.2832,rad=((1-t)+.12)*(.55+.45*r());
-      x=Math.cos(a)*rad;z=Math.sin(a)*rad;y=(t*2-1)*1.25;
-    }else{
-      const th=r()*6.2832,v=r()*2-1,s=Math.sqrt(1-v*v),rad=.6+.4*Math.cbrt(r());
-      const wx=shape==='wide'?1.25:1,wy=shape==='wide'?.7:.85;
-      x=s*Math.cos(th)*rad*wx;z=s*Math.sin(th)*rad*wx;y=v*rad*wy;
-    }
-    out.push({x,y,z});
-  }
-  return out;
-}
-function mk(geo,color,opts){const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial(Object.assign({color,flatShading:true,roughness:.9},opts||{})));m.castShadow=true;m.receiveShadow=true;return m}
-
-let GEO={};
-function init3D(){
-  renderer=new THREE.WebGLRenderer({canvas:$('#gl'),antialias:true,alpha:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
-  renderer.setClearColor(0x000000,0);
-  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-  scene=new THREE.Scene();
-  camera=new THREE.PerspectiveCamera(40,1,.1,100);
-  hemi=new THREE.HemisphereLight(0xffffff,0x9bd1a0,.9);scene.add(hemi);
-  sun=new THREE.DirectionalLight(0xfff3d6,1);sun.position.set(4,8,5);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);
-  const sc=sun.shadow.camera;sc.left=-5;sc.right=5;sc.top=6;sc.bottom=-4;sc.near=1;sc.far=25;scene.add(sun);
-  world=new THREE.Group();scene.add(world);
-  GEO={
-    blob:new THREE.IcosahedronGeometry(.3,0),
-    cone:new THREE.ConeGeometry(.28,.7,6),
-    trunk:new THREE.CylinderGeometry(.62,1,1,8).translate(0,.5,0),
-    branch:new THREE.CylinderGeometry(.6,1,1,5).translate(0,.5,0)
-  };
-  // isla
-  const top=mk(new THREE.CylinderGeometry(2.6,2.5,.35,18),0x8fd46b);top.position.y=-.175;world.add(top);
-  const soil=mk(new THREE.ConeGeometry(2.5,1.6,9),0x8a5a3c);soil.rotation.x=Math.PI;soil.position.y=-1.15;world.add(soil);
-  const r=rng(5);
-  for(let i=0;i<5;i++){const a=r()*6.28,d=1.6+r()*.8;const rock=mk(new THREE.DodecahedronGeometry(.1+r()*.1,0),0xa9b0b3);rock.position.set(Math.cos(a)*d,.05,Math.sin(a)*d);world.add(rock)}
-  for(let i=0;i<14;i++){const a=r()*6.28,d=.8+r()*1.7;const tuft=mk(new THREE.ConeGeometry(.05,.22,4),0x5fb04c);tuft.position.set(Math.cos(a)*d,.1,Math.sin(a)*d);world.add(tuft)}
-  // objetos desbloqueables
-  {const g=new THREE.Group(),rr=rng(11),cols=[0xff7aa8,0xffd447,0xffffff,0xb18cff];
-    for(let i=0;i<9;i++){const a=rr()*6.28,d=1.7+rr()*.6,f=new THREE.Group();const st=mk(new THREE.CylinderGeometry(.015,.015,.28,4),0x3f8f48);st.position.y=.14;const h=mk(new THREE.IcosahedronGeometry(.07,0),cols[i%4]);h.position.y=.3;f.add(st);f.add(h);f.position.set(Math.cos(a)*d,0,Math.sin(a)*d);g.add(f)}
-    props.flores=g;world.add(g)}
-  {const g=new THREE.Group();
-    [[1.6,1.5,1],[1.95,1.15,.7],[-1.2,-1.9,.9]].forEach(([x,z,s])=>{const m=new THREE.Group();const st=mk(new THREE.CylinderGeometry(.045,.06,.2,6),0xf3e6d3);st.position.y=.1;const cap=mk(new THREE.SphereGeometry(.16,8,5,0,6.283,0,1.57),0xe0473f);cap.position.y=.2;m.add(st);m.add(cap);m.scale.setScalar(s);m.position.set(x,0,z);g.add(m)});
-    props.hongos=g;world.add(g)}
-  {const g=new THREE.Group();g.position.set(-1.9,0,1.3);
-    const pole=mk(new THREE.CylinderGeometry(.035,.05,1.3,6),0x4a4a4a);pole.position.y=.65;
-    const cage=mk(new THREE.BoxGeometry(.26,.3,.26),0x4a4a4a);cage.position.y=1.38;
-    const bulb=mk(new THREE.SphereGeometry(.11,8,6),0xffd27a,{emissive:0xffc24a,emissiveIntensity:1.3});bulb.position.y=1.38;
-    lanternLight=new THREE.PointLight(0xffd27a,.5,4.5);lanternLight.position.y=1.4;
-    g.add(pole);g.add(cage);g.add(bulb);g.add(lanternLight);props.farol=g;world.add(g)}
-  {const g=new THREE.Group();g.position.set(1.7,0,-1.7);g.rotation.y=-.785;
-    const seat=mk(new THREE.BoxGeometry(1,.08,.36),0x9a6b45);seat.position.y=.4;
-    const back=mk(new THREE.BoxGeometry(1,.3,.06),0x9a6b45);back.position.set(0,.6,-.16);
-    const l1=mk(new THREE.BoxGeometry(.07,.4,.3),0x7a5238);l1.position.set(-.4,.2,0);
-    const l2=l1.clone();l2.position.x=.4;
-    g.add(seat);g.add(back);g.add(l1);g.add(l2);props.banco=g;world.add(g)}
-  Object.values(props).forEach(p=>p.visible=false);
-  // luciérnagas
-  const FF=24,ffGeo=new THREE.BufferGeometry();ffGeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(FF*3),3));
-  const fr=rng(21);const ffSeed=Array.from({length:FF},()=>({a:fr()*6.28,r:.8+fr()*2.1,h:.5+fr()*2.6,v:.15+fr()*.25,w:.8+fr()*1.4}));
-  fireflies=new THREE.Points(ffGeo,new THREE.PointsMaterial({color:0xffe98a,size:.16,transparent:true,opacity:.95,blending:THREE.AdditiveBlending,depthWrite:false}));
-  fireflies.userData={ffSeed,FF};fireflies.visible=false;world.add(fireflies);
   // mariposas
   butterGroup=new THREE.Group();butterGroup.visible=false;world.add(butterGroup);
   const wingGeo=new THREE.PlaneGeometry(.22,.16).rotateX(-Math.PI/2).translate(.11,0,0);
@@ -749,6 +651,7 @@ function renderFoco(){
   const actions=idle?`<button class="btn primary" data-act="start">Empezar a brotar</button>`
     :focus?`<button class="btn primary" data-act="pause">${paused?'Seguir':'Pausar'}</button><button class="btn ghost" data-act="stop">Terminar</button>`
     :`<button class="btn ghost block" data-act="stop">Saltar pausa</button>`;
+
   sheet.className='';
   sheet.innerHTML=`<div class="foco"><div class="ring ${brk?'break':''}"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="track" cx="60" cy="60" r="54"/><circle class="prog" id="ringP" cx="60" cy="60" r="54" stroke-dasharray="339.3" stroke-dashoffset="339.3"/></svg><div class="ring-in"><div class="digits" id="digits">25:00</div><div class="mlabel" id="mlabel"></div></div></div><div class="ctrl">${ctrl}</div></div><div class="actions">${actions}</div>`;
   updateTimerUI();
@@ -774,7 +677,7 @@ function updateTimerUI(){
   const room=$('#room');
   if(room){
     const names=S.friends.filter(f=>f.st==='focus').map(f=>f.n);
-    room.innerHTML=names.length?`<span class="live"></span><span>':''} PROXIMAMENTE tu bosque también puede crecer en compañía. ${session?'':'. .'}</span>`:'';
+    room.innerHTML=names.length?`<span class="live"></span><span>${names.length>1?names.slice(0,-1).join(', ')+' y '+names.slice(-1):names[0]} ${names.length>1?'están':'está'} estudiando ahora${session?'':'. Sumate.'}</span>`:'';
   }
 }
 function swatch(it){
@@ -818,6 +721,7 @@ function renderBosque(){
     h+=`<div class="row">${swatch({id,type:'tree'})}<div><b>${SPECIES[id].name}</b> <span class="muted">· ${st.name}</span><div class="muted">${st.next?`${tr.leaves}/${st.next} hojas para ${STG[st.i+1].toLowerCase()}`:leavesTxt(tr.leaves)}</div>${unlockLine}<div class="bar mini"><i style="width:${pct}%"></i></div></div>
     ${S.active===id?'<span class="tag">Cuidando</span>':`<button class="btn sm" data-act="care" data-id="${id}">Cuidar</button>`}</div>`;
   });
+
   sheet.innerHTML=h;
 }
 function renderTienda(){
@@ -862,15 +766,21 @@ function renderTools(){
 
 function renderAmigos(){
   lastSocial=Date.now();
-  sheet.innerHTML=`<div class="sheet-h"><h2>Amigos</h2><span class="muted">Una comunidad que crece</span></div>
-    <div class="friend-coming">
-      <div class="friend-illustration" aria-hidden="true"><span>🌱</span><i>✦</i><b>♡</b></div>
-      <div class="friend-pill">PRÓXIMAMENTE</div>
-      <h3>Tu bosque también puede crecer en compañía</h3>
-      <p>Muy pronto vas a poder conectar con tus amigos, compartir códigos y acompañar el progreso de sus sesiones de estudio.</p>
-      <div class="friend-features"><div><span>✉</span><b>Invitar amigos</b></div><div><span>🌿</span><b>Compartir avances</b></div><div><span>✨</span><b>Motivarse juntos</b></div></div>
-    </div>`;
+  const invitePanel=pendingInviteToken?`<div class="cloud-card"><b>Te invitaron a Brotar 🌱</b><p class="muted">Iniciá sesión o creá tu cuenta para aceptar la invitación.</p><button class="btn primary block" data-act="acceptInvite">Aceptar invitación</button></div>`:'';
+  if(!supabaseClient){sheet.innerHTML=`<div class="sheet-h"><h2>Amigos</h2><span class="cloud-status">Conexión pendiente</span></div><div class="cloud-card"><h3 style="margin-top:0">Activemos tu cuenta</h3><p class="muted">Primero vamos a conectar Brotar con tu proyecto privado de Supabase. Después vas a poder crear tu cuenta, guardar el progreso y enviar invitaciones reales.</p><p class="muted">Todavía falta configurar <b>supabase-config.js</b> con la URL del proyecto y la clave publicable. No pongas una clave secreta en este archivo.</p></div>${invitePanel}`;return}
+  if(!cloudUser){sheet.innerHTML=`<div class="sheet-h"><h2>Amigos</h2><span class="cloud-status">Cuenta no iniciada</span></div>${invitePanel}<div class="cloud-card"><h3 style="margin-top:0">Crear tu cuenta</h3><p class="muted">Usá un apodo, no hace falta poner tu nombre completo.</p><label class="muted" for="authName">Apodo</label><input id="authName" type="text" maxlength="24" autocomplete="nickname" placeholder="Tu apodo"><label class="muted" for="authEmail">Correo electrónico</label><input id="authEmail" type="email" autocomplete="email" placeholder="tu correo"><label class="muted" for="authPassword">Contraseña</label><input id="authPassword" type="password" minlength="8" autocomplete="new-password" placeholder="Mínimo 8 caracteres"><div class="cloud-actions"><button class="btn primary flex1" data-act="authSignup">Crear cuenta</button><button class="btn ghost flex1" data-act="authLogin">Ya tengo cuenta</button></div><p class="foot">Si el registro pide confirmar el correo, revisá tu bandeja de entrada. Tu contraseña no se guarda en Brotar.</p></div>`;return}
+  const rows=cloudFriends.map(f=>`<div class="friend-cloud-row"><div class="friend-cloud-avatar">${esc((f.display_name||'?').slice(0,1).toUpperCase())}</div><div><b>${esc(f.display_name||'Amigo')}</b><div class="muted">${f.share_progress?`${Number(f.total_minutes||0)} min de estudio · ${Number(f.leaves||0)} hojas · ${esc(f.active_tree||'Roble')}`:'Prefiere mantener su progreso privado'}</div></div><button class="heart" data-act="removeFriend" data-id="${f.friend_id}" aria-label="Quitar amigo">×</button></div>`).join('');
+  sheet.innerHTML=`<div class="sheet-h"><h2>Amigos</h2><span class="cloud-status">${navigator.onLine?'Cuenta conectada':'Sin conexión'}</span></div><div class="cloud-card"><b>Hola, ${esc(cloudUser.user_metadata?.display_name||cloudUser.email?.split('@')[0]||'') } 🌱</b><p class="muted">Tu progreso se guarda en este dispositivo y se sincroniza cuando hay conexión.</p><div class="cloud-actions"><button class="btn primary flex1" data-act="createInvite">＋ Crear enlace de invitación</button><button class="btn ghost" data-act="refreshFriends">Actualizar</button></div><div id="inviteResult"></div></div>${invitePanel}<div class="cloud-card"><b>Privacidad del progreso</b><label class="cloud-check"><input id="shareProgress" type="checkbox" ${store.get('brotar_share_progress')==='true'?'checked':''}><span>Permitir que mis amigos vean mis minutos de estudio, hojas y árbol actual. Si lo desactivo, solo verán mi apodo.</span></label><button class="btn sm ghost" data-act="saveShare">Guardar preferencia</button></div><h3>Mis amigos</h3><div class="cloud-card" id="cloudFriendList">${rows||'<p class="muted">Todavía no tenés amigos conectados. Creá un enlace y compartilo con alguien de confianza.</p>'}</div><div class="cloud-actions"><button class="btn ghost flex1" data-act="authLogout">Cerrar sesión</button></div>`;
+  loadCloudFriends();
 }
+async function loadCloudFriends(){if(!supabaseClient||!cloudUser)return;const profile=await supabaseClient.from('profiles').select('share_progress,display_name').eq('id',cloudUser.id).maybeSingle();if(profile.data){store.set('brotar_share_progress',String(!!profile.data.share_progress));const shareBox=$('#shareProgress');if(shareBox)shareBox.checked=!!profile.data.share_progress;}const box=$('#cloudFriendList');if(box)box.innerHTML='<p class="muted">Cargando amigos…</p>';const {data,error}=await supabaseClient.rpc('list_my_friends');if(error){if(box)box.innerHTML='<p class="muted">No pudimos cargar la lista. Probá actualizar.</p>';console.warn(error);return}cloudFriends=data||[];if(tab==='amigos')renderAmigosNoReload();}
+function renderAmigosNoReload(){const box=$('#cloudFriendList');if(!box)return;box.innerHTML=cloudFriends.map(f=>`<div class="friend-cloud-row"><div class="friend-cloud-avatar">${esc((f.display_name||'?').slice(0,1).toUpperCase())}</div><div><b>${esc(f.display_name||'Amigo')}</b><div class="muted">${f.share_progress?`${Number(f.total_minutes||0)} min de estudio · ${Number(f.leaves||0)} hojas · ${esc(f.active_tree||'Roble')}`:'Prefiere mantener su progreso privado'}</div></div><button class="heart" data-act="removeFriend" data-id="${f.friend_id}" aria-label="Quitar amigo">×</button></div>`).join('')||'<p class="muted">Todavía no tenés amigos conectados. Creá un enlace y compartilo con alguien de confianza.</p>'}
+async function authSignup(){const email=($('#authEmail')?.value||'').trim(),password=$('#authPassword')?.value||'',name=($('#authName')?.value||'').trim().slice(0,24);if(!name||!email||password.length<8){toast('Completá apodo, correo y una contraseña de al menos 8 caracteres');return}const redirectUrl=new URL(location.origin+location.pathname);if(pendingInviteToken)redirectUrl.searchParams.set('invite',pendingInviteToken);const {data,error}=await supabaseClient.auth.signUp({email,password,options:{data:{display_name:name},emailRedirectTo:redirectUrl.toString()}});if(error){toast(error.message);return}if(data.session){toast('Cuenta creada')}else toast('Revisá tu correo para confirmar la cuenta y después iniciá sesión')}
+async function authLogin(){const email=($('#authEmail')?.value||'').trim(),password=$('#authPassword')?.value||'';if(!email||!password){toast('Ingresá tu correo y contraseña');return}const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});if(error){toast(error.message);return}toast('Sesión iniciada')}
+async function createFriendInvite(){if(!cloudUser){toast('Iniciá sesión primero');return}const {data,error}=await supabaseClient.rpc('create_friend_invite');if(error){toast(error.message);return}const token=typeof data==='string'?data:data?.token;if(!token){toast('No pudimos crear el enlace');return}const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('invite',token);const link=url.toString();const box=$('#inviteResult');if(box)box.innerHTML=`<div class="invite-box">${esc(link)}</div>`;try{if(navigator.share)await navigator.share({title:'Te invito a Brotar',text:'Conectemos nuestros bosques en Brotar',url:link});else{await navigator.clipboard.writeText(link);toast('Enlace copiado para compartir')}}catch(e){if(e?.name!=='AbortError')try{await navigator.clipboard.writeText(link);toast('Enlace copiado')}catch(_){toast('Copiá el enlace que aparece en pantalla')}}}
+async function acceptFriendInvite(){if(!cloudUser){toast('Iniciá sesión para aceptar');return}if(!pendingInviteToken){toast('No encontramos el código de invitación');return}const {error}=await supabaseClient.rpc('accept_friend_invite',{p_token:pendingInviteToken});if(error){toast(error.message);return}pendingInviteToken=null;store.set('brotar_pending_invite','');history.replaceState({},'',location.pathname);toast('¡Ya están conectados!');await loadCloudFriends();renderAmigos()}
+async function removeCloudFriend(id){if(!confirm('¿Querés quitar a esta persona de tu lista de amigos?'))return;const {error}=await supabaseClient.rpc('remove_friend',{p_friend_id:id});if(error){toast(error.message);return}toast('Amigo quitado');await loadCloudFriends()}
+async function saveSharePreference(){const enabled=!!$('#shareProgress')?.checked;const {error}=await supabaseClient.from('profiles').update({share_progress:enabled}).eq('id',cloudUser.id);if(error){toast(error.message);return}store.set('brotar_share_progress',String(enabled));toast('Preferencia de privacidad guardada');await loadCloudFriends()}
 
 /* ---------- modales ---------- */
 function openModal(html){const m=$('#modal');m.innerHTML='<div class="card" role="dialog" aria-modal="true">'+html+'</div>';m.hidden=false}
@@ -890,6 +800,14 @@ function openSettings(){
 function setDur(v){S.dur=Math.round(clamp(Number(v)||25,1,180));save();renderFoco()}
 function act(a,el){
   switch(a){
+    case 'authSignup':authSignup();break;
+    case 'authLogin':authLogin();break;
+    case 'authLogout':supabaseClient.auth.signOut().then(()=>{cloudUser=null;cloudFriends=[];renderAmigos();toast('Sesión cerrada')});break;
+    case 'createInvite':createFriendInvite();break;
+    case 'acceptInvite':acceptFriendInvite();break;
+    case 'refreshFriends':loadCloudFriends();break;
+    case 'removeFriend':removeCloudFriend(el.dataset.id);break;
+    case 'saveShare':saveSharePreference();break;
     case 'tab':tab=el.dataset.tab;renderTab();break;
     case 'addSubject':{const v=($('#newSubject').value||'').trim();if(!v){toast('Escribí un nombre');break}if(S.subjects.some(x=>x.toLowerCase()===v.toLowerCase())){toast('Esa materia ya existe');break}S.subjects.push(v);S.selectedSubject=v;save();renderTab();break}
     case 'renameSubject':{const i=+el.dataset.id,old=S.subjects[i],v=prompt('Nuevo nombre para '+old,old);if(v&&v.trim()){const n=v.trim().slice(0,32);S.subjects[i]=n;S.studyLog.forEach(x=>{if(x.subject===old)x.subject=n});if(S.selectedSubject===old)S.selectedSubject=n;save();renderTab()}break}
@@ -952,7 +870,7 @@ document.addEventListener('change',e=>{
   else if(e.target.id==='musicCb'){if(e.target.checked)startAmbient();else stopAmbient()}
   else if(e.target.dataset.task!==undefined){S.tasks[+e.target.dataset.task].done=e.target.checked;save();renderTab()}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='friendCode')act('addFriend');if(e.key==='Escape')closeModal()});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='friendCode')act('addFriend');if(e.key==='Enter'&&e.target.id==='authPassword')authLogin();if(e.key==='Escape')closeModal()});
 
 /* ---------- inicio ---------- */
 if(HAS3D){try{init3D();buildTree(S.active);applyEquipment();requestAnimationFrame(frame)}catch(err){console.warn('BROTAR 3D no disponible',err);$('#gl').style.display='none';$('#stage').insertAdjacentHTML('afterbegin','<div class="nogl">El bosque 3D no está disponible en este navegador. El temporizador y las herramientas siguen funcionando.</div>')}}
@@ -960,6 +878,7 @@ else{$('#gl').style.display='none';$('#stage').insertAdjacentHTML('afterbegin','
 updateLabel();
 $('#pts').textContent=S.points;
 renderTab();
+initCloud();
 setInterval(tick,250);
 })();
 </script>
