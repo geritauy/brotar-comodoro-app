@@ -774,7 +774,7 @@ function updateTimerUI(){
   const room=$('#room');
   if(room){
     const names=S.friends.filter(f=>f.st==='focus').map(f=>f.n);
-    room.innerHTML=names.length?`<span class="live"></span><span>${names.length>1?names.slice(0,-1).join(', ')+' y '+names.slice(-1):names[0]} ${names.length>1?'están':'está'} estudiando ahora${session?'':'. Sumate.'}</span>`:'';
+    room.innerHTML=names.length?`<span class="live"></span><span>':''} PROXIMAMENTE tu bosque también puede crecer en compañía. ${session?'':'. .'}</span>`:'';
   }
 }
 function swatch(it){
