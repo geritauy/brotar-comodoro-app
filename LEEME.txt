@@ -1,0 +1,15 @@
+# Brotar — PWA
+
+## Publicar en GitHub Pages
+1. Crear un repositorio público llamado `brotar`.
+2. Subir el contenido de esta carpeta en la raíz del repositorio (index.html, manifest.json, service-worker.js y carpeta icons).
+3. En Settings → Pages, elegir Deploy from a branch, rama `main`, carpeta `/ (root)` y guardar.
+4. Esperar la publicación y abrir la URL HTTPS que muestra GitHub Pages.
+5. Abrir una vez con conexión para que el navegador guarde los recursos; después podrá abrirse sin conexión.
+
+## Instalar
+- Android: Chrome → menú → Instalar aplicación / Añadir a pantalla de inicio.
+- iPhone: Safari → Compartir → Agregar a pantalla de inicio.
+
+## Nota sobre modo sin conexión
+La primera visita debe hacerse con internet para descargar la aplicación y guardar Three.js y las fuentes. Luego, el service worker conserva la interfaz y los recursos visitados. Las funciones que dependan de servicios externos o sincronización no estarán disponibles sin internet. Los datos locales del dispositivo se conservan en el almacenamiento del navegador.
