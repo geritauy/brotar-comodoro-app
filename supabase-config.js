@@ -1,4 +1,4 @@
-window.BROTAR_SUPABASE = {
+window.BROTAR_SUPABASE_CONFIG = {
   url: "https://mamqbmsgbkdmfqqqrzvn.supabase.co",
-  anonKey: "sb_publishable_72vaOo4oXwa9fvahtJSy3A_iCLccKNm"
+  key: "sb_publishable_72vaOo4oXwa9fvahtJSy3A_iCLccKNm"
 };
